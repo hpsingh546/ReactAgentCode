@@ -4,6 +4,8 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import "dotenv/config";
 import { TavilySearch } from "@langchain/tavily";
 import z from "zod";
+import { writeFileSync } from "node:fs";
+import readline from "node:readline/promises";
 
 async function main() {
   const Search = new TavilySearch({
@@ -40,15 +42,32 @@ async function main() {
     model: model,
     tools: [Search, calendarEvents],
   });
-  const result = await agent.invoke({
-    messages: [
-      {
-        role: "system",
-        content: `You are a personal assistant. Use provided tools to get the information if you don't have it. Current date and time: ${new Date().toUTCString()}`,
-      },
-      { role: "user", content: "iran news today" },
-    ],
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
-  console.log(result.messages[result.messages.length - 1].content);
+  while (true) {
+    const userQuery = await rl.question("You: ");
+
+    if (userQuery === "/bye") break;
+
+    const result = await agent.invoke({
+      messages: [
+        {
+          role: "system",
+          content: `You are a personal assistant. Use provided tools to get the information if you don't have it. Current date and time: ${new Date().toUTCString()}`,
+        },
+        { role: "user", content: userQuery },
+      ],
+    });
+    console.log(result.messages[result.messages.length - 1].content);
+  }
+  rl.close();
+
+  // const drawableGraphGraphState = await agent.getGraphAsync();
+  // const graphStateImage = await drawableGraphGraphState.drawMermaidPng();
+  // const graphStateArrayBuffer = await graphStateImage.arrayBuffer();
+  // const filePath = "./graphState.png";
+  // writeFileSync(filePath, new Uint8Array(graphStateArrayBuffer));
 }
 main();
