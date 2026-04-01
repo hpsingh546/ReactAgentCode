@@ -6,6 +6,7 @@ import { TavilySearch } from "@langchain/tavily";
 import z from "zod";
 import { writeFileSync } from "node:fs";
 import readline from "node:readline/promises";
+import { MemorySaver } from "@langchain/langgraph";
 
 async function main() {
   const Search = new TavilySearch({
@@ -25,7 +26,7 @@ async function main() {
       ]);
     },
     {
-      name: "get-calendar-events",
+      name: "calendarEvents",
       description: "Call to get the calendar events.",
       schema: z.object({
         query: z
@@ -38,9 +39,12 @@ async function main() {
     model: "openai/gpt-oss-120b",
     temperature: 0,
   });
+  const checkpointer = new MemorySaver();
+
   const agent = createAgent({
     model: model,
     tools: [Search, calendarEvents],
+    checkpointer: checkpointer,
   });
   const rl = readline.createInterface({
     input: process.stdin,
@@ -51,16 +55,20 @@ async function main() {
 
     if (userQuery === "/bye") break;
 
-    const result = await agent.invoke({
-      messages: [
-        {
-          role: "system",
-          content: `You are a personal assistant. Use provided tools to get the information if you don't have it. Current date and time: ${new Date().toUTCString()}`,
-        },
-        { role: "user", content: userQuery },
-      ],
-    });
+    const result = await agent.invoke(
+      {
+        messages: [
+          {
+            role: "system",
+            content: `You are a personal assistant. Use provided tools to get the information if you don't have it. Current date and time: ${new Date().toUTCString()}`,
+          },
+          { role: "user", content: userQuery },
+        ],
+      },
+      { configurable: { thread_id: "1" } },
+    );
     console.log(result.messages[result.messages.length - 1].content);
+    console.log("whole flow=>", result.messages);
   }
   rl.close();
 
