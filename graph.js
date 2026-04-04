@@ -4,12 +4,19 @@
  */
 
 import { ChatGroq } from "@langchain/groq";
-import { END, MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+import {
+  END,
+  MemorySaver,
+  MessagesAnnotation,
+  StateGraph,
+} from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { TavilySearch } from "@langchain/tavily";
 import { tool } from "langchain";
 import z from "zod";
 import "dotenv/config";
+import { printGraph } from "./utils.js";
+import readline from "node:readline/promises";
 
 /**
  * Tools
@@ -20,7 +27,7 @@ const Search = new TavilySearch({
 });
 const calendarEvents = tool(
   async ({ query }) => {
-    // Google calendar logic goes
+    // Google calendar logicheck do i have meetingc goes
     return JSON.stringify([
       {
         title: "Meeting with Sujoy",
@@ -39,7 +46,7 @@ const calendarEvents = tool(
   },
 );
 
-const tools = [Search, calendarEvents];
+const tools = [Search, calendarEvents]; //ARRAY OF CUSTOME TOLL
 const toolNode = new ToolNode(tools);
 
 const llm = new ChatGroq({
@@ -51,6 +58,8 @@ async function callModel(state) {
   console.log("calling llm...");
   const resp = await llm.invoke(state.messages); //send all the message to llm
   // console.log("Response from model", resp);
+  // console.log("LLm Response=>", resp); // Here, we are appending the LLM's response message to the 'messages' array.
+
   return { messages: [resp] };
 }
 
@@ -69,7 +78,7 @@ function shouldcontinue(state) {
     return "Tools";
   }
   // Otherwise, stop
-  return "END";
+  return "__end__";
 }
 /**
  * Build the graph
@@ -77,15 +86,37 @@ function shouldcontinue(state) {
 const graph = new StateGraph(MessagesAnnotation)
   .addNode("LLM", callModel)
   .addNode("Tools", toolNode)
-  .addEdge("__start__", "LLM")
+  .addEdge("__start__", "LLM") //1
   .addEdge("Tools", "LLM")
-  .addConditionalEdges("LLM", shouldcontinue);
-const app = graph.compile();
+  .addConditionalEdges("LLM", shouldcontinue, {
+    __end__: END,
+    Tools: "Tools",
+  }); //2
+// 3. Initialize MemorySaver
+const memory = new MemorySaver();
+const app = graph.compile({ checkpointer: memory });
 async function main() {
-  const result = await app.invoke({
-    messages: [{ role: "user", content: "delhi current weather" }],
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
-  const message = result.messages;
-  console.log("Ai:", message[message.length - 1].content);
+  const config = { configurable: { thread_id: "conversation-123" } };
+
+  while (true) {
+    const userQuery = await rl.question("You: ");
+
+    if (userQuery === "bye") break;
+
+    const result = await app.invoke(
+      {
+        messages: [{ role: "user", content: userQuery }],
+      },
+      config,
+    );
+    const message = result.messages;
+    console.log("Ai:", message[message.length - 1].content);
+    printGraph(app, "./customeGraph.png");
+  }
+  rl.close();
 }
 main();
